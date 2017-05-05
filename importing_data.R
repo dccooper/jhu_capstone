@@ -1,5 +1,11 @@
-set.seed(1000)
+
 # Importing the data
+destination_file <- "data/Coursera-SwiftKey.zip"
+source_file <- "https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip"
+
+download.file(source_file, destination_file)
+
+unzip(destination_file)
 
 ## English Corpus raw files
 en_tw <- file("data/final/en_US/en_US.twitter.txt", "r")
