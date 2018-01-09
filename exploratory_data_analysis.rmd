@@ -1,0 +1,166 @@
+---
+title: "Capstone - Exploratory Data Analysis"
+author: "David Cooper"
+date: "May 12, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+load("data/ngrams.RData")
+library(tidytext)
+library(tm) 
+library(stringi)
+```
+# Introduction
+To begin this project, we were given corpora in four differnet languages. Each set of corpora contained samples for blog, news articles and tweets. For this project, we will focus on the English language corpora.
+
+## Data preparation and cleaning
+```{r}
+# Reading files into R
+en_twitter <- readLines("data/final/en_US/en_US.twitter.txt", encoding = "UTF-8", skipNul = TRUE)
+en_news <- readLines("data/final/en_US/en_US.news.txt", encoding = "UTF-8", skipNul = TRUE)
+en_blogs <- readLines("data/final/en_US/en_US.blogs.txt", encoding = "UTF-8", skipNul = TRUE)
+
+```
+  
+Now that we have read the files into R, let's look at a quick summary of the data.
+```{r}
+# Get sizes of the original files
+en_blogs_size <- file.info("data/final/en_US/en_US.blogs.txt")$size / 1024 ^ 2
+en_news_size <- file.info("data/final/en_US/en_US.news.txt")$size / 1024 ^ 2
+en_twitter_size <- file.info("data/final/en_US/en_US.twitter.txt")$size / 1024 ^ 2
+
+# Get a count of the words in each file using Stringi library
+en_blogs_wdcount <- stri_count_words(en_blogs)
+en_news_wdcount <- stri_count_words(en_news)
+en_twitter_wdcount <- stri_count_words(en_twitter)
+
+# Build a data.table with a summary of all the data
+corpora_summary <- data.frame(source = c("en_blogs", "en_news", "en_twitter"),
+           size_MB = c(en_blogs_size, en_news_size, en_twitter_size),
+           lines = c(length(en_blogs), length(en_twitter), length(en_news)),
+           words = c(sum(en_blogs_wdcount), sum(en_news_wdcount), sum(en_twitter_wdcount)),
+           mean_words = c(mean(en_blogs_wdcount), mean(en_news_wdcount), mean(en_twitter_wdcount)))
+
+```
+Data Source | File Size (MB) | Number of Lines | Number of Words | Mean Number of Words
+---- | ---- | ---- | ---- | ---- 
+Blogs | `r en_blogs_size` | `r corpora_summary[1, "lines"]` | `r corpora_summary[1, "words"]` | `r corpora_summary[1, "mean_words"]`
+News | `r en_news_size` | `r corpora_summary[2, "lines"]` | `r corpora_summary[2, "words"]` | `r corpora_summary[2, "mean_words"]`
+Twitter | `r en_twitter_size` | `r corpora_summary[3, "lines"]` | `r corpora_summary[3, "words"]` | `r corpora_summary[3, "mean_words"]`
+
+As you can see, these are large files. So, let's instead clean them up and sample some of overall corpora to make a test set that's easier to work with and that we can use to build our model on. 
+
+```{r}
+set.seed(1234)
+corpus_sample <- c(sample(en_blogs, 1000),
+                   sample(en_news, 1000),
+                   sample(en_twitter, 1000))
+
+corpus_train <- VCorpus(VectorSource(corpus_sample))
+toSpace <- content_transformer(function(x, pattern) gsub(pattern, " ", x))
+corpus_train <- tm_map(corpus_train, toSpace, "(f|ht)tp(s?)://(.*)[.][a-z]+")
+corpus_train <- tm_map(corpus_train, toSpace, "@[^\\s]+")
+corpus_train <- tm_map(corpus_train, tolower)
+corpus_train <- tm_map(corpus_train, removeWords, stopwords("english"))
+corpus_train <- tm_map(corpus_train, removePunctuation)
+corpus_train <- tm_map(corpus_train, removeNumbers)
+corpus_train <- tm_map(corpus_train, stripWhitespace)
+corpus_train <- tm_map(corpus_train, PlainTextDocument)
+
+rm(en_blogs, en_twitter, en_news)
+```
+
+# Exploratory Data Anaysis
+Now that we have our sampled training data for our soon-to-be-built model, let's explore it further as a representation of the whole corpus. 
+
+```{r eval=FALSE}
+library(RWeka)
+
+bigram <- function(x) NGramTokenizer(x, Weka_control(min = 2, max = 2))
+trigram <- function(x) NGramTokenizer(x, Weka_control(min = 3, max = 3))
+
+getFreq <- function(tdm) {
+  freq <- sort(rowSums(as.matrix(tdm)), decreasing = TRUE)
+  return(data.frame(word = names(freq), freq = freq))
+}
+
+# n-grams analysis of data sample
+corpus_unigram <- getFreq(removeSparseTerms(TermDocumentMatrix(corpus_train), 0.9999))
+corpus_bigram <- getFreq(removeSparseTerms(TermDocumentMatrix(corpus_train, control = list(tokenize = bigram)), 0.9999))
+corpus_trigram <- getFreq(removeSparseTerms(TermDocumentMatrix(corpus_train, control = list(tokenize = trigram)), 0.9999))
+```
+## Histograms
+Let's first look at how the word counts compare across the various sources of blogs, news articles and tweets.
+```{r}
+library(ggplot2)
+
+# Set standard for graphs
+makePlot <- function(data, label) {
+  ggplot(data[1:10,], aes(reorder(word, freq), freq)) +
+         labs(x = label, y = "Frequency") +
+         theme_minimal() + geom_col() + xlab(NULL) +  coord_flip()
+}
+
+# Blog word count histogram
+ggplot(NULL, aes(x = en_blogs_wdcount, y = ..density..)) +
+  geom_histogram(fill = 'white', color = 'black', binwidth = 10) +
+  geom_density() +  xlab('Number of words') +
+  ylab('Percentage') +
+  ggtitle('Word count per blog article\n') +
+  scale_x_continuous(limits = c(0, 500)) +
+  theme_minimal()
+
+# News article word count
+ggplot(NULL, aes(x = en_news_wdcount, y = ..density..)) +
+  geom_histogram(fill = 'white', color = 'black', binwidth = 10) +
+  geom_density() +  xlab('Number of words') +
+  ylab('Percentage') +
+  ggtitle('Word count per news article\n') +
+  scale_x_continuous(limits = c(0, 500)) +
+  theme_minimal()
+
+# Twitter word count histogram
+ggplot(NULL, aes(x = en_twitter_wdcount, y = ..density..)) +
+  geom_histogram(fill = 'white', color = 'black', binwidth = 2) +
+  geom_density(adjust = 5) +  xlab('Number of words') +
+  ylab('Percentage') +
+  ggtitle('Word count per tweet\n') +
+  theme_minimal()
+```
+
+## Word Count and Frequency
+But, what's more interesting to a non-technical audience, are questions like what words, or gorups of words appear the most?
+
+**Top 10 Most Frequently Appearing Single Words**
+```{r}
+makePlot(corpus_unigram, "")
+```
+**Top 10 Most Frequently Appearing Two Word Combinations**
+```{r}
+makePlot(corpus_bigram, "")
+```
+**Top 10 Most Frequently Appearing Three Word Combinations**
+```{r}
+makePlot(corpus_trigram, "")
+```
+## Word Cloud
+Since this report is intended to be understandable to a non-data science audience, another way to vizualise the frequency of words is a word cloud.  
+
+**Most Commonly Used Single Words**
+```{r warning=FALSE}
+require(RColorBrewer)
+library(wordcloud)
+palette <- brewer.pal(8,"Set1")
+wordcloud(corpus_unigram[,1], corpus_unigram[,2], min.freq =1, max.words=100,
+          random.order = F, ordered.colors = F, colors=palette)
+text(x=0.5, y=0)
+
+```
+
+# Next Steps
+
+Now, our next step will be to work on a model. Once we get a completed model - one that balances speed and effectiveness - we can incorporate it into our shiny app. 
+
+In order to design a speedy model, it may be best to focus on optimizing based on 2- and 3-gram elements. 

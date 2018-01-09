@@ -8,9 +8,9 @@ download.file(source_file, destination_file)
 unzip(destination_file)
 
 ## English Corpus raw files
-en_tw <- file("data/final/en_US/en_US.twitter.txt", "r")
-en_nw <- file("data/final/en_US/en_US.news.txt", open = "rb")
-en_bl <- file("data/final/en_US/en_US.blogs.txt", "r")
+en_tw <- file("data/final/en_US/en_US.twitter.txt", encoding = "UTF-8")
+en_nw <- file("data/final/en_US/en_US.news.txt", encoding = "UTF-8")
+en_bl <- file("data/final/en_US/en_US.blogs.txt", encoding = "UTF-8")
 
 ## English Corpus subset files
 en_tw_raw <- readLines(en_tw)
